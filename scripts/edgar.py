@@ -1,12 +1,58 @@
+from datetime import datetime
 import logging
+import os
+import zipfile
+
+from ftplib import FTP
 
 from bs4 import BeautifulSoup
 
-from urlcaching import open_url, set_cache_file
+from urlcaching import open_url, set_cache_http, download_ftp, set_cache_ftp
 
 _SEC_URL = 'https://www.sec.gov'
+_SEC_FTP = 'ftp.sec.gov'
 
 _EDGAR_URL = _SEC_URL + '/cgi-bin/browse-edgar'
+
+
+def next_quarter(year, quarter):
+    next_year = year
+    next_quarter = quarter + 1
+    if quarter > 3:
+        next_quarter = 1
+        next_year += 1
+
+    return next_year, next_quarter
+
+
+def range_quarters(start_year, start_quarter, end_year, end_quarter):
+    year, quarter = start_year, start_quarter
+    while year < end_year or (year == end_year and quarter <= end_quarter):
+        yield year, quarter
+        year, quarter = next_quarter(year, quarter)
+
+
+def load_reports(start_year, start_quarter, breakdown_type='company', filing_type='10-Q', line_filter=None):
+    today = datetime.today()
+    end_year = today.year
+    end_quarter = (today.month - 1) // 4 + 1
+    quarters = range_quarters(start_year, start_quarter, end_year, end_quarter)
+
+    def filter_ok(line):
+        if line_filter:
+            return line_filter.upper() in line.upper()
+
+        else:
+            return True
+
+    for year, quarter in quarters:
+        filing_path = 'edgar/full-index/%s/QTR%s' % (year, quarter)
+        content_io = download_ftp(_SEC_FTP, filing_path, '%s.zip' % breakdown_type)
+        archive = zipfile.ZipFile(content_io, 'r')
+        content = archive.read('%s.idx' % breakdown_type).decode('ascii')
+        filings = (line for line in content.splitlines()
+                   if len(line.split()) >= 4 and filing_type in line.split()[-4] and filter_ok(line))
+        print(os.linesep.join(filings))
 
 
 def find_tag_content(soup, *args, **kwargs):
@@ -126,7 +172,7 @@ def load_filings_pointers(cik, filing_type='10-Q', filings_count=200):
 
 
 def main():
-    set_cache_file('../data/.urlcache')
+    set_cache_http('../data/.urlcache')
     name, cik = fast_search('CYH')
     print('"%s","%s"' % (name, cik))
     filings = load_filings_pointers(cik, filing_type='10-Q', filings_count=200)
@@ -139,5 +185,6 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     logging.info('started')
 
-    #load_filing_details('/Archives/edgar/data/1108109/000119312516575053/0001193125-16-575053-index.htm')
-    main()
+    set_cache_http('../data/.urlcache')
+    set_cache_ftp('../data/.ftpcache')
+    load_reports(2015, 1, breakdown_type='company', filing_type='10-K', line_filter='hallador')
