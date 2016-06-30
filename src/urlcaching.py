@@ -1,3 +1,4 @@
+import logging
 import shelve
 from ftplib import FTP
 
@@ -22,6 +23,7 @@ def set_cache_ftp(cache_file_path):
 
 
 def ftp_retrieve(server, path, filename):
+    logging.info('loading: ftp://%s/%s/%s' % (server, path, filename))
     ftp = FTP(server)
     ftp.login()
     ftp.cwd(path)
@@ -30,11 +32,11 @@ def ftp_retrieve(server, path, filename):
     return buffer
 
 
-def download_ftp(server, path, filename):
+def download_ftp(server, path, filename, refresh_cache=False):
     if _cache_file_path:
         url_cache = shelve.open(_cache_file_path)
         location = '/'.join([server, path, filename])
-        if location not in url_cache:
+        if location not in url_cache or refresh_cache:
             url_cache[location] = ftp_retrieve(server, path, filename)
 
         output = url_cache[location]
