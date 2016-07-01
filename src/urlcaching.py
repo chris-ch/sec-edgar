@@ -33,14 +33,30 @@ def ftp_retrieve(server, path, filename):
 
 
 def download_ftp(server, path, filename, refresh_cache=False):
+    """
+    TODO: drop shelve (too unstable) and use a simple filesystem implementation.
+    :param server:
+    :param path:
+    :param filename:
+    :param refresh_cache:
+    :return:
+    """
     if _cache_file_path:
-        url_cache = shelve.open(_cache_file_path)
-        location = '/'.join([server, path, filename])
-        if location not in url_cache or refresh_cache:
-            url_cache[location] = ftp_retrieve(server, path, filename)
+        with shelve.open(_cache_file_path) as url_cache:
+            location = '/'.join([server, path, filename])
+            if location not in url_cache or refresh_cache:
+                url_cache[location] = ftp_retrieve(server, path, filename)
 
-        output = url_cache[location]
-        url_cache.close()
+            try:
+                output = url_cache[location]
+
+            except KeyError:
+                del url_cache[location]
+                raise
+
+            except EOFError:
+                del url_cache[location]
+                raise
 
     else:
         output = ftp_retrieve(server, path, filename)

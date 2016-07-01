@@ -84,7 +84,8 @@ def load_index_xbrl(start_year, start_quarter, company_pattern, filing_type='10-
 
         return output_lines
 
-    return load_index(start_year, start_quarter, filename='xbrl', callback=content_processor)
+    index = load_index(start_year, start_quarter, filename='xbrl', callback=content_processor)
+    return index
 
 
 def load_index_text(start_year, start_quarter, filing_type='10-Q', line_filter=None):
@@ -120,7 +121,7 @@ if __name__ == '__main__':
 
     set_cache_ftp('../data/.ftpcache')
 
-    index = load_index_xbrl(2016, 1, 'hallador', filing_type='10-Q')
+    index = load_index_xbrl(2010, 1, 'American Capital Agency', filing_type='10-Q')
     for filing in index:
         print(filing)
         filename_txt = filing['filename']
@@ -139,16 +140,36 @@ if __name__ == '__main__':
                     in_xbrl_body = True
                     continue
 
-                elif len(line) == 0:
+                elif len(line) == 0 or line.startswith('end'):
                     in_xbrl = False
                     continue
 
                 elif in_xbrl_body:
-                    xbrl_zip_bytes += binascii.a2b_uu(line)
+                    try:
+                        xbrl_zip_bytes += binascii.a2b_uu(line)
+
+                    except binascii.Error:
+                        logging.error('failed to parse line "%s"', line)
+                        raise
 
         xbrl_zip = zipfile.ZipFile(io.BytesIO(xbrl_zip_bytes))
-        for xbrl_file in xbrl_zip.infolist():
-            print(xbrl_file)
+        file_endings = {'.xsd': 'schema',
+                        '_cal.xml': 'Calculation Linkbase',
+                        '_def.xml': 'Definition',
+                        '_lab.xml': 'Labels Linkbase',
+                        '_pre.xml': 'Presentation',
+                        }
+
+        xbrl_data = dict()
+        for xbrl_file_info in xbrl_zip.infolist():
+            for ending in file_endings:
+                if xbrl_file_info.filename.endswith(ending):
+                    xbrl_data[file_endings[ending]] = xbrl_file_info.filename
+
+                else:
+                    xbrl_data['Instance Document'] = xbrl_file_info.filename
+
+        print(xbrl_data)
 
     #reports = load_reports_company(2015, 1, line_filter='hallador', filing_type='10-Q')
     #for report in reports:
